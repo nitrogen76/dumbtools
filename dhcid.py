@@ -1,25 +1,44 @@
 #!/usr/bin/env python3
-import binascii
 import hashlib
+import base64
+import binascii
 import sys
 
-def generate_dhcid_from_mac(mac_addr):
-    # Convert MAC from colon-separated to raw bytes
-    mac_bytes = bytes(int(b, 16) for b in mac_addr.split(":"))
+def generate_dhcid_record(name: str, base64_dhcid: str, ttl: int = 600) -> str:
+    return f"{name.rstrip('.')}.\t{ttl} IN DHCID {base64_dhcid}"
 
-    # Construct the DHCID data: ID type (0) + hardware type (1) + MAC
-    data = bytes([0, 1]) + mac_bytes
+def dhcid_from_mac(mac: str, fqdn: str) -> str:
+    ident_type = b'\x00'  # MAC-based
+    hwtype = b'\x01'      # Ethernet
+    hwaddr = binascii.unhexlify(mac.replace(":", "").lower())
+    identifier = ident_type + hwtype + hwaddr
+    digest = hashlib.sha256(identifier + fqdn.encode('utf-8').lower()).digest()
+    return base64.b64encode(identifier + digest).decode()
 
-    # SHA-256 hash as per RFC 4701
-    sha256 = hashlib.sha256(data).digest()
+def dhcid_from_duid(duid_hex: str, fqdn: str) -> str:
+    ident_type = b'\x01'  # DUID-based
+    duid = binascii.unhexlify(duid_hex.replace(":", "").replace("-", "").lower())
+    identifier = ident_type + duid
+    digest = hashlib.sha256(identifier + fqdn.encode('utf-8').lower()).digest()
+    return base64.b64encode(identifier + digest).decode()
 
-    # Base16 (hex) representation, uppercase
-    print(binascii.hexlify(sha256).decode("ascii").upper())
+def usage():
+    print("Usage:")
+    print("  gen_dhcid_rr.py --mac <mac> <fqdn>")
+    print("  gen_dhcid_rr.py --duid <duid> <fqdn>")
+    sys.exit(1)
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: {} <MAC address>".format(sys.argv[0]))
-        sys.exit(1)
+    if len(sys.argv) != 4:
+        usage()
 
-    generate_dhcid_from_mac(sys.argv[1])
+    mode, ident, fqdn = sys.argv[1], sys.argv[2], sys.argv[3]
+    if mode == "--mac":
+        dhcid = dhcid_from_mac(ident, fqdn)
+    elif mode == "--duid":
+        dhcid = dhcid_from_duid(ident, fqdn)
+    else:
+        usage()
+
+    print(generate_dhcid_record(fqdn, dhcid))
 
