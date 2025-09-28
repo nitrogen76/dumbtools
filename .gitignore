@@ -1,0 +1,27 @@
+## pythonprojects gitignore
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environment
+venv/
+
+# VS Code settings (optional)
+.vscode/
+
+# Environment variable files
+.env
+.env.*
+
+# Test output
+*.log
+.coverage
+htmlcov/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
