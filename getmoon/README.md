@@ -106,7 +106,8 @@ $ getmoon 2025-12-26
 
 ## Specific datetime
 
-```$ getmoon 2025-12-26T19:00:00 --tz America/Chicago
+```
+$ getmoon 2025-12-26T19:00:00 --tz America/Chicago
 ```
 
 
