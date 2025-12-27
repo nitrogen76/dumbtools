@@ -11,15 +11,17 @@ It is fast enough for interactive use, accurate enough to agree with NASA when t
 ## Features
 
 - Computes **fraction of lunar disk illuminated** (percentage)
-- Defaults to **NOW** (current UTC time)
-- Accepts:
+- Defaults to **NOW**
+- Accepts multiple time formats:
   - ISO-8601 date (`YYYY-MM-DD`)
   - ISO-8601 datetime (`YYYY-MM-DDTHH:MM:SS`)
+  - ISO-8601 datetime **with timezone offset**
   - Unix epoch time (seconds)
 - Optional **progress bar** visualization
-- Automatic bar width:
+- Automatic progress bar width:
   - Half terminal width if available
   - Fallback to 25 characters
+- Timezone-aware input and output
 - Clean CLI interface using `argparse`
 - No GUI, no curses, no nonsense
 
@@ -27,7 +29,7 @@ It is fast enough for interactive use, accurate enough to agree with NASA when t
 
 ## Requirements
 
-Python 3.8+
+Python **3.8 or newer**
 
 Python dependencies:
 
