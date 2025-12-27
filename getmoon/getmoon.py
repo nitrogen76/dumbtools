@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
 
+import os
+from datetime import datetime
+## See if I can get timezone
+try:
+    from zoneinfo import ZoneInfo  # Python 3.9+
+except ImportError:
+    from pytz import timezone as ZoneInfo  # Python 3.8 fallback
+
 import argparse
 import shutil
 import sys
@@ -8,25 +16,36 @@ import numpy as np
 from astropy.time import Time
 from astropy.coordinates import get_body, get_sun
 
+from datetime import datetime, timezone
 
-def parse_time(value):
-    """
-    Parse a time argument:
-    - None        -> now (UTC)
-    - digits      -> Unix epoch seconds
-    - otherwise   -> ISO-8601 date/datetime
-    """
+def parse_time(value, tzname):
+    tzname = tzname.strip()
+
+    # Resolve timezone
+    if tzname.lower() == "utc":
+        tz = timezone.utc
+    elif tzname.lower() == "local":
+        tz = datetime.now().astimezone().tzinfo
+    else:
+        tz = ZoneInfo(tzname)
+
+    # NOW
     if value is None:
-        return Time.now()
+        dt = datetime.now(tz)
+        return Time(dt.astimezone(timezone.utc))
 
+    # Unix epoch
     if value.isdigit():
         return Time(float(value), format="unix", scale="utc")
 
-#    return Time(value, scale="utc")
-# python 3.8
-    return Time(value, format="isot", scale="utc")
+    # ISO date or datetime
+    dt = datetime.fromisoformat(value)
 
+    # If no timezone info, assume provided tz
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=tz)
 
+    return Time(dt.astimezone(timezone.utc))
 
 def moon_illumination(t):
     moon = get_body("moon", t)
@@ -69,6 +88,13 @@ def main():
     )
 
     parser.add_argument(
+        "--tz",
+        default="utc",
+        help="Timezone for input/output (utc, local, or IANA name like America/Chicago)",
+    )
+
+
+    parser.add_argument(
         "time",
         nargs="?",
         help="ISO date/datetime or Unix epoch (default: now)",
@@ -88,11 +114,25 @@ def main():
 
     args = parser.parse_args()
 
-    t = parse_time(args.time)
+    t = parse_time(args.time, args.tz)
     illum = moon_illumination(t)
 
-    print(f"Time (UTC): {t.isot}")
-    print(f"Moon illumination: {illum:.2f}%")
+    from datetime import timezone
+
+    dt_utc = t.to_datetime(timezone=timezone.utc)
+    if args.tz.lower() == "local":
+        dt_disp = dt_utc.astimezone()
+        tz_label = f"local {dt_disp.tzinfo}"
+
+    elif args.tz.lower() == "utc":
+        dt_disp = dt_utc
+        tz_label = "UTC"
+    else:
+        dt_disp = dt_utc.astimezone(ZoneInfo(args.tz))
+        tz_label = args.tz
+
+    print(f"Time ({tz_label}): {dt_disp.isoformat()}")
+
 
     if args.bar:
         width = args.width if args.width else default_bar_width()
