@@ -138,7 +138,8 @@ def main():
         width = args.width if args.width else default_bar_width()
         bar = render_bar(illum / 100.0, width)
         print(f"{bar} {illum:.2f}%")
-
+    else:
+        print(f"Moon illumination: {illum:.2f}%")
 
 if __name__ == "__main__":
     main()
