@@ -12,6 +12,8 @@ import argparse
 import shutil
 import sys
 import numpy as np
+from astropy import units as u
+
 
 from astropy.time import Time
 from astropy.coordinates import get_body, get_sun
@@ -46,6 +48,21 @@ def parse_time(value, tzname):
         dt = dt.replace(tzinfo=tz)
 
     return Time(dt.astimezone(timezone.utc))
+
+def moon_phase_trend(t, delta_hours=6):
+    """
+    Determine whether the Moon is waxing or waning by comparing
+    illumination now vs. a short time in the future.
+    """
+    illum_now = moon_illumination(t)
+    illum_future = moon_illumination(t + delta_hours * u.hour)
+
+    if np.isclose(illum_now, illum_future, atol=0.05):
+        return "transitioning"
+    elif illum_future > illum_now:
+        return "waxing"
+    else:
+        return "waning"
 
 def moon_illumination(t):
     moon = get_body("moon", t)
@@ -116,6 +133,7 @@ def main():
 
     t = parse_time(args.time, args.tz)
     illum = moon_illumination(t)
+    phase_trend = moon_phase_trend(t)
 
     from datetime import timezone
 
@@ -133,12 +151,12 @@ def main():
 
     print(f"Time ({tz_label}): {dt_disp.isoformat()}")
 
-
     if args.bar:
         width = args.width if args.width else default_bar_width()
         bar = render_bar(illum / 100.0, width)
-        print(f"{bar} {illum:.2f}%")
-
+        print(f"{bar} {illum:.2f}% ({phase_trend})")
+    else:
+        print(f"Moon illumination: {illum:.2f}% ({phase_trend})")
 
 if __name__ == "__main__":
     main()
