@@ -4,7 +4,7 @@ import subprocess
 import requests
 import sys
 
-KUMA_URL = "http://YOUR_URL_WITH_WEBHOOK_HERE"
+KUMA_URL = "http://kuma.example.com/api/push/yourwebhookhere""
 
 
 def get_chrony_sources():
