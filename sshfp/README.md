@@ -1,4 +1,4 @@
-# fp-sshupdate
+# sshfp-record-updater
 
 Simple helper script for updating SSHFP DNS records in FreeIPA using the host's currently installed SSH host keys.
 
@@ -32,13 +32,13 @@ Useful for:
 Run locally on a FreeIPA-managed host:
 
 ```bash
-./fp-sshupdate.sh
+./sshfp-record-updater.sh
 ```
 
 Or specify a hostname explicitly:
 
 ```bash
-./fp-sshupdate.sh braize.dna.nurgle.net
+./sshfp-record-updater.sh foo.ipa.example.com
 ```
 
 ---
@@ -61,19 +61,19 @@ Adding SSHFP: 4 2 b9b33ee2f026de9901f8a9535c392f9b6bbb5eef022e1557e4ff35c53b5a03
 Compare DNS output:
 
 ```bash
-dig +short SSHFP braize.dna.nurgle.net
+dig +short SSHFP foo.ipa.example.com
 ```
 
 against:
 
 ```bash
-ssh-keygen -r braize.dna.nurgle.net
+ssh-keygen -r foo.ipa.example.com
 ```
 
 You can also test OpenSSH DNS verification:
 
 ```bash
-ssh -vvv -o VerifyHostKeyDNS=yes braize.dna.nurgle.net
+ssh -vvv -o VerifyHostKeyDNS=yes foo.ipa.example.com
 ```
 
 ---
