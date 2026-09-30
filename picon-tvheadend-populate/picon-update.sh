@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-HDHR="http://[YOUR HD HOMERUN IP OR HOSTNAME]"
-TVH="http://[YOUR TV HEADEND SERVER]:9981"
-TVH_USER="tv"  # Replace with your tvheadend username
-TVH_PASS="tv"  # Replace with your tvheadend password
+HDHR="http://${YOUR_HD_HOMERUN_IP_OR_HOSTNAME}"
+TVH="http://${YOUR_TV_HEADEND_SERVER}:9981"
+TVH_USER="${TVHEADEND_USER}"  # Replace with your tvheadend username
+TVH_PASS="${TVHEADEND_PASS}"  # Replace with your tvheadend password
 
-PICON_DIR="/YOUR/PICON/DIR"
+PICON_DIR="${YOUR/PICON/DIR}"
 
 mkdir -p "$PICON_DIR"
 

@@ -68,13 +68,13 @@ This setup was tested with:
 -   TVHeadend persistent data mounted as:
 
 ``` text
-/tank/docker/tvheadend -> /var/lib/tvheadend
+/path/on/host/to/tvheadend -> /var/lib/tvheadend
 ```
 
 -   Picons stored on the host in:
 
 ``` text
-/tank/docker/tvheadend/picons
+/path/on/host/to/picons
 ```
 
 and visible inside the container as:
@@ -116,7 +116,7 @@ references is the **Picon path**.
 Create the persistent directory on the Docker host:
 
 ``` bash
-mkdir -p /tank/docker/tvheadend/picons
+mkdir -p /path/on/host/to/picons
 ```
 
 Verify that the container can see it:
@@ -132,7 +132,7 @@ Get the tuner's current `DeviceAuth`:
 
 ``` bash
 AUTH=$(
-    curl -s http://hdhomerun.dna.nurgle.net/discover.json |
+    curl -s http://HDHOMERUN_IP_OR_HOSTNAME/discover.json |
     jq -r '.DeviceAuth'
 )
 ```
@@ -163,8 +163,8 @@ TVHeadend in this setup uses HTTP Digest authentication.
 To inspect a channel:
 
 ``` bash
-curl --digest -s -u 'tv:tv' \
-  'http://tvheadend.dna.nurgle.net:9981/api/channel/grid?limit=1000' |
+curl --digest -s -u 'TVHEADEND_USER:TVHEADEND_PASS' \
+  'http://TVHEADEND_SERVER:9981/api/channel/grid?limit=1000' |
 jq '.entries[] |
     select(.name | test("WFAA"; "i")) |
     {name, number, icon, uuid}'
@@ -190,8 +190,63 @@ The corresponding file must therefore be:
 Inside this Docker setup, that corresponds to:
 
 ``` text
-/tank/docker/tvheadend/picons/1_0_0_1_AF1_10000_DDDD0000_0_0_0.png
+/path/on/host/to/picons/1_0_0_1_AF1_10000_DDDD0000_0_0_0.png
 ```
+
+## Configure the updater for your environment
+
+Before running the updater, edit these variables at the top of the
+script:
+
+``` bash
+HDHR="http://${YOUR_HD_HOMERUN_IP_OR_HOSTNAME}"
+TVH="http://${YOUR_TV_HEADEND_SERVER}:9981"
+TVH_USER="${TVHEADEND_USER}"  # Replace with your TVHeadend username
+TVH_PASS="${TVHEADEND_PASS}"  # Replace with your TVHeadend password
+
+PICON_DIR="${YOUR_PICON_DIR}"
+```
+
+For example, `HDHR` can contain either an IP address or a resolvable
+hostname. `TVH` should point to the TVHeadend HTTP interface, normally
+on port 9981.
+
+`PICON_DIR` is the **host-side directory into which the script downloads
+the images**. If TVHeadend runs in Docker, that directory must be
+mounted somewhere the TVHeadend container can read. The TVHeadend
+**Picon path** must point to the corresponding path *inside* the
+container.
+
+For example:
+
+``` text
+Docker host:
+    /srv/tvheadend/picons
+
+Container:
+    /var/lib/tvheadend/picons
+```
+
+with a mount such as:
+
+``` text
+/srv/tvheadend -> /var/lib/tvheadend
+```
+
+would use:
+
+``` bash
+PICON_DIR="/srv/tvheadend/picons"
+```
+
+while TVHeadend's Picon path would be:
+
+``` text
+file:///var/lib/tvheadend/picons/
+```
+
+The two paths do not have to be identical; they only need to refer to
+the same files through the container mount.
 
 ## Automatic updater
 
@@ -205,12 +260,12 @@ Install the following as:
 #!/usr/bin/env bash
 set -euo pipefail
 
-HDHR="http://hdhomerun.dna.nurgle.net"
-TVH="http://tvheadend.dna.nurgle.net:9981"
-TVH_USER="tv"
-TVH_PASS="tv"
+HDHR="http://${YOUR_HD_HOMERUN_IP_OR_HOSTNAME}"
+TVH="http://${YOUR_TV_HEADEND_SERVER}:9981"
+TVH_USER="${TVHEADEND_USER}"  # Replace with your TVHeadend username
+TVH_PASS="${TVHEADEND_PASS}"  # Replace with your TVHeadend password
 
-PICON_DIR="/tank/docker/tvheadend/picons"
+PICON_DIR="${YOUR_PICON_DIR}"
 
 mkdir -p "$PICON_DIR"
 
@@ -466,7 +521,7 @@ It also assumes:
 The tested TVHeadend installation requires Digest authentication, hence:
 
 ``` bash
-curl --digest -u 'tv:tv' ...
+curl --digest -u 'TVHEADEND_USER:TVHEADEND_PASS' ...
 ```
 
 A plain `curl -u` request returned HTTP 401.
