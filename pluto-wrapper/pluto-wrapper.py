@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
-import signal
 import os
+import signal
 import subprocess
 import sys
 import urllib.parse
 import urllib.request
+import re
+import tempfile
 
 
 DEFAULT_USER_AGENT = "Mozilla/5.0"
@@ -16,39 +18,61 @@ def log(message):
     print(message, file=sys.stderr, flush=True)
 
 
-def get_best_rendition(source_url, user_agent):
+
+def attr(line, name):
+    """
+    Return an HLS attribute value, quoted or unquoted.
+    """
+    m = re.search(
+        rf'(?:^|,){re.escape(name)}=(?:"([^"]*)"|([^,]*))',
+        line.split(":", 1)[1]
+    )
+    if not m:
+        return None
+    return m.group(1) if m.group(1) is not None else m.group(2)
+
+
+def absolute_media_uri(line, master_url):
+    """
+    Rewrite URI="..." in EXT-X-MEDIA to an absolute URL.
+    """
+    m = re.search(r'URI="([^"]+)"', line)
+    if not m:
+        return line
+
+    absolute = urllib.parse.urljoin(master_url, m.group(1))
+    return line[:m.start(1)] + absolute + line[m.end(1):]
+
+
+def get_best_presentation(source_url, user_agent):
     req = urllib.request.Request(
         source_url,
-        headers={"User-Agent": user_agent},
+        headers={"User-Agent": user_agent}
     )
 
     with urllib.request.urlopen(req, timeout=15) as response:
         master_url = response.geturl()
         master = response.read().decode("utf-8")
 
-    best_bandwidth = -1
-    best_uri = None
-
     lines = master.splitlines()
+
+    best_bandwidth = -1
+    best_stream_inf = None
+    best_video_uri = None
 
     for i, line in enumerate(lines):
         if not line.startswith("#EXT-X-STREAM-INF:"):
             continue
 
-        bandwidth = None
+        bandwidth = attr(line, "BANDWIDTH")
 
-        for attr in line.split(":", 1)[1].split(","):
-            attr = attr.strip()
-
-            if attr.startswith("BANDWIDTH="):
-                try:
-                    bandwidth = int(attr.split("=", 1)[1])
-                except ValueError:
-                    pass
-                break
-
-        if bandwidth is None:
+        try:
+            bandwidth = int(bandwidth)
+        except (TypeError, ValueError):
             continue
+
+        # URI is the next non-comment, non-empty line.
+        uri = None
 
         for candidate in lines[i + 1:]:
             candidate = candidate.strip()
@@ -59,22 +83,80 @@ def get_best_rendition(source_url, user_agent):
             if candidate.startswith("#"):
                 continue
 
-            if bandwidth > best_bandwidth:
-                best_bandwidth = bandwidth
-                best_uri = candidate
-
+            uri = candidate
             break
 
-    if best_uri is None:
-        raise RuntimeError("No HLS variants found")
+        if uri is not None and bandwidth > best_bandwidth:
+            best_bandwidth = bandwidth
+            best_stream_inf = line
+            best_video_uri = urllib.parse.urljoin(master_url, uri)
 
-    return (
-        urllib.parse.urljoin(master_url, best_uri),
-        best_bandwidth,
+    if best_stream_inf is None:
+        raise RuntimeError("No HLS video variants found")
+
+    audio_group = attr(best_stream_inf, "AUDIO")
+
+    if not audio_group:
+        raise RuntimeError("Selected video variant has no AUDIO group")
+
+    # Find audio renditions belonging to this video variant.
+    audio_candidates = []
+
+    for line in lines:
+        if not line.startswith("#EXT-X-MEDIA:"):
+            continue
+
+        if attr(line, "TYPE") != "AUDIO":
+            continue
+
+        if attr(line, "GROUP-ID") != audio_group:
+            continue
+
+        audio_candidates.append(line)
+
+    if not audio_candidates:
+        raise RuntimeError(
+            f"No audio renditions found for AUDIO group {audio_group!r}"
+        )
+
+    # Prefer DEFAULT=YES. This avoids accidentally selecting
+    # Pluto's audio-description rendition.
+    audio_line = next(
+        (
+            line for line in audio_candidates
+            if attr(line, "DEFAULT") == "YES"
+        ),
+        audio_candidates[0],
     )
+
+    audio_line = absolute_media_uri(audio_line, master_url)
+
+    #
+    # Build one-video / one-audio master.
+    #
+    # Remove SUBTITLES because we intentionally aren't carrying them.
+    #
+    stream_inf = re.sub(
+        r',SUBTITLES="[^"]*"',
+        '',
+        best_stream_inf
+    )
+
+    synthetic = "\n".join([
+        "#EXTM3U",
+        "#EXT-X-VERSION:5",
+        audio_line,
+        stream_inf,
+        best_video_uri,
+        "",
+    ])
+
+    return synthetic, best_bandwidth
 
 
 def main():
+    log("PLUTO WRAPPER DEBUG BUILD 2026-09-30-2155")
+
     if len(sys.argv) < 2:
         print(
             f"Usage: {sys.argv[0]} STREAM_URL [USER_AGENT] [CHANNEL_ID]",
@@ -100,14 +182,26 @@ def main():
     ffmpeg = None
 
     try:
-        rendition_url, bandwidth = get_best_rendition(
+        synthetic_master, bandwidth = get_best_presentation(
             source_url,
             user_agent,
         )
 
+        log(f"{channel_id}: selected bandwidth {bandwidth}")
+
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".m3u8",
+            prefix="pluto-",
+            delete=False,
+        ) as f:
+            f.write(synthetic_master)
+            synthetic_path = f.name
+
         log(
             f"{channel_id}: selected bandwidth {bandwidth}"
         )
+        log(f"{channel_id}: rendition URL {synthetic_path}")
         log(
             f"{channel_id}: starting VLC"
         )
@@ -115,7 +209,9 @@ def main():
         vlc_cmd = [
             "cvlc",
             "-I", "dummy",
-            rendition_url,
+            synthetic_path,
+#            rendition_url,
+#            source_url,
             f"--http-user-agent={user_agent}",
             "--no-spu",
             "--no-video-title-show",
@@ -128,19 +224,16 @@ def main():
             stdout=subprocess.PIPE,
             stderr=sys.stderr,
             bufsize=0,
-            user="nobody",
-            group="nogroup",
-            env={
-                **os.environ,
-                "HOME": "/tmp",
-                "XDG_CONFIG_HOME": "/tmp",
-            },
         )
 
         ffmpeg_cmd = [
             "ffmpeg",
             "-hide_banner",
-            "-loglevel", "warning",
+            "-loglevel", "info",
+
+            "-analyzeduration", "5000000",
+            "-probesize", "5000000",
+
             "-i", "pipe:0",
 
             "-map", "0:v:0",
@@ -162,22 +255,30 @@ def main():
             f"{channel_id}: starting FFmpeg normalizer"
         )
 
+        env = os.environ.copy()
+        env["FFREPORT"] = "file=/tmp/pluto-ffmpeg.log:level=32"
+
+        log(
+            f"{channel_id}: starting FFmpeg normalizer"
+        )
+
         ffmpeg = subprocess.Popen(
             ffmpeg_cmd,
             stdin=vlc.stdout,
 
-            # THIS is the important difference from app.py:
-            # FFmpeg writes directly to our stdout, which is
-            # what Dispatcharr will consume.
+    # FFmpeg writes directly to our stdout, which is
+    # what Dispatcharr will consume.
             stdout=sys.stdout.buffer,
 
             stderr=sys.stderr,
             bufsize=0,
+            env=env,
         )
 
         vlc.stdout.close()
 
         return ffmpeg.wait()
+
 
     except KeyboardInterrupt:
         return 130
